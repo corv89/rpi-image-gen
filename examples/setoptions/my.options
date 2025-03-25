@@ -5,3 +5,4 @@ device_user1=pilot
 dEvIcE_UsER1pASs=removeme
 # Variables set in the .cfg file can be overridden
 IMAGE_NAME=mydevice
+apt_keydir=keydir
