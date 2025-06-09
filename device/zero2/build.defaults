@@ -1,3 +1,0 @@
-# Build defaults for Zero2 class devices
-class=zero2
-storage_type=sd

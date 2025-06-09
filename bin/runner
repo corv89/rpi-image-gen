@@ -9,7 +9,7 @@ shift 1
 dirs=()
 dirs+=("${IGIMAGE}/bdebstrap")
 dirs+=("${IGDEVICE}/bdebstrap")
-[[ ! -z ${IGconf_ext_dir+x} ]] && dirs+=("${IGconf_ext_dir}/bdebstrap")
+[[ -n ${IGconf_ext_dir+x} ]] && dirs+=("${IGconf_ext_dir}/bdebstrap")
 dirs+=("${IGTOP}/scripts/bdebstrap")
 
 case "$op" in
@@ -19,11 +19,14 @@ case "$op" in
          scripts=("${dir}/${op}"*)
          for script in "${scripts[@]}" ; do
             if [ -x "$script" ] ; then
-               env -C "$dir" bash "$(basename "$script")" "$@"
-               err=$?
-               if [ $err -ne 0 ] ; then
-                  >&2 echo "runner: $script error ($err)"
-                  exit $err
+               s=$(basename "$script")
+               if [[ $s =~ ^[a-zA-Z0-9-]+$ ]] ; then
+                  env -C "$dir" bash "$s" "$@"
+                  err=$?
+                  if [ $err -ne 0 ] ; then
+                     >&2 echo "runner: $script error ($err)"
+                     exit $err
+                  fi
                fi
             fi
          done

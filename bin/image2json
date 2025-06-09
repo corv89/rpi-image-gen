@@ -6,28 +6,38 @@ import argparse
 import os
 import copy
 import sys
+import subprocess
 
 
-VERSION = "1.2.4"
+VERSION = "2.0.0"
 
 
 IMAGE_KEYS = {"IGconf_device_class",
               "IGconf_device_variant",
               "IGconf_device_storage_type",
-              "IGconf_image_name",
+              "IGconf_device_sector_size",
               "IGconf_image_version",
               "IGconf_sys_outputdir"}
 
 
+IMAGE_KEY_TYPES = {
+    "IGconf_device_sector_size": int,
+    # add more as needed
+}
+
+
 top_template = {
-    "version": VERSION,
-    "meta": [],
+    "IGversion": VERSION,
+    "IGmeta": [],
     "attributes": {
-        "image-size": "0",
+        "image-name": "unknown",
+        "image-size": 0,
+        "image-palign-bytes": "unknown",
     },
     "layout": {
-        "partition-table-type": "none",
-        "partitions": []
+        "partitiontable": [],
+        "partitionimages": [],
+        "provisionmap": []
     }
 }
 
@@ -60,13 +70,13 @@ def map_genimage(key, value):
     gmap = {
         # https://github.com/pengutronix/genimage#the-image-section
         "partition-type-uuid":{
-            ("L", "linux"):       "0fc63daf-8483-4772-8e79-3d69d8477de4",
-            ("S", "swap"):        "0657fd6d-a4ab-43c4-84e5-0933c84b4f4f",
-            ("H", "home"):        "933ac7e1-2eb4-4f13-b844-0e14e2aef915",
-            ("U", "esp", "uefi"): "c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
-            ("R", "raid"):        "a19d880f-05fc-4d3b-a006-743f0f84911e",
-            ("V", "lvm"):         "e6d6d379-f507-44c2-a23c-238f2a3df928",
-            ("F", "fat32"):       "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7"
+            ("L", "linux"):       "0FC63DAF-8483-4772-8E79-3D69D8477DE4",
+            ("S", "swap"):        "0657FD6D-A4AB-43C4-84E5-0933C84B4F4F",
+            ("H", "home"):        "933AC7E1-2EB4-4F13-B844-0E14E2AEF915",
+            ("U", "esp", "uefi"): "C12A7328-F81F-11D2-BA4B-00A0C93EC93B",
+            ("R", "raid"):        "A19D880F-05FC-4D3B-A006-743F0F84911E",
+            ("V", "lvm"):         "E6D6D379-F507-44C2-A23C-238F2A3DF928",
+            ("F", "fat32"):       "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7"
         }
     }
     if key in gmap:
@@ -180,6 +190,38 @@ def find_images(itype, data):
     return timages
 
 
+# Returns the path of a build asset. If the asset is not an absolute path, use
+# the env var as the directory of where to look.
+def get_artefact_path(file, dir_evar):
+    if not os.path.isabs(file):
+        dir = os.getenv(dir_evar)
+        if not dir:
+            raise ValueError(f"Not an env var: {dir_evar}")
+            return None
+
+        if not os.path.isdir(dir):
+            raise FileNotFoundError(f"Dir not found: {dir}")
+            return None
+
+        fpath = os.path.join(dir, file)
+    else:
+        fpath = file
+
+    if not os.path.isfile(fpath):
+        raise FileNotFoundError(f"File not found: {fpath}")
+        return None
+
+    return fpath
+
+
+# Returns the size of a build artefact file.
+def get_artefact_size(file):
+    f = get_artefact_path(file, "IGconf_sys_outputdir")
+    if f:
+        return os.stat(f).st_size
+    return None
+
+
 def get_fs_label(section):
     label = section.get("label")
     if label:
@@ -217,31 +259,40 @@ IMAGE_PROCESSORS = {
 def parse_genimage_config(config_path):
     data = confuse2dict(config_path, {"exec-pre", "exec-post"}, map_genimage)
 
-    images = find_sections("image", data)
-    partitions = find_sections("partition", data)
-    simgs = find_images("android-sparse", data)
+    # Anchor to hdimage as it's the root container of a disk image
+    # https://github.com/pengutronix/genimage/?tab=readme-ov-file#hdimage
+    hdimage_data = find_images("hdimage", data)
+    if not hdimage_data:
+        return (None,None,None)
 
     disk_attr = {}
+    ptable = {}
 
-    # Anchor to hdimage parent for top level attributes
-    for iname, idata in images.items():
-        if "hdimage" in idata:
-            hdimage = idata.get("hdimage")
-            disk_attr["partition-table-type"] = hdimage.get("partition-table-type")
-            disk_attr["image-size"] = idata.get("size") if idata.get("size") else "0"
+    partitions = find_sections("partition", hdimage_data)
+    images = find_sections("image", data)
+    simgs = find_images("android-sparse", data)
+
+    for img_name, img_data in hdimage_data.items():
+        hdimage = img_data.get("hdimage")
+        disk_attr["image-name"] = img_name
+        disk_attr["image-size"] = hdimage.get("size") if hdimage.get("size") else 0
+        disk_attr["image-palign"] = hdimage.get("align") if hdimage.get("align") else "0"
+        sz = get_artefact_size(img_name)
+        if sz:
+            disk_attr["image-size"] = sz
 
     # https://github.com/pengutronix/genimage?tab=readme-ov-file#the-image-configuration-options
     gtypes = ["android-sparse", "btrfs", "cpio", "cramfs", "ext2", "ext3",
               "ext4", "f2fs", "file", "FIT", "fip", "flash", "iso", "jffs2",
               "qemu", "rauc", "squashfs," "tar", "ubi", "vfat"]
 
-    # Associate partitions with their images
+    # Associate partitions in the hdimage with their images
     for pname, pattr in partitions.items():
         if "image" in pattr:
-            iname = pattr["image"]
-            if iname in images:
+            piname = pattr["image"]
+            if piname in images:
                 # Found. Merge
-                partitions[pname] = {**images[iname], **pattr}
+                partitions[pname] = {**images[piname], **pattr}
 
                 # Tag image type
                 for t in gtypes:
@@ -254,14 +305,37 @@ def parse_genimage_config(config_path):
                             if attr:
                                 partitions[pname].update(attr)
 
+                # Establish the actual size of the partition image rather than relying on
+                # the size described by the genimage config (which may be expressed in
+                # percent). The actual size is required for provisioning purposes.
+                sz = get_artefact_size(piname)
+                if sz:
+                    partitions[pname]["size"] = sz
+
                 # If this image has a sparse derivative, tag it
-                for sname, sattr in simgs.items():
-                    simg = sattr.get("android-sparse")
-                    if iname == simg.get("image"):
+                for sname, sdata in simgs.items():
+                    simg = sdata.get("android-sparse")
+                    if piname == simg.get("image"):
                         partitions[pname]["simage"] = sname
 
+    # Read the partition table from the image
+    img_path = get_artefact_path(img_name, "IGconf_sys_outputdir")
+    try:
+        res = subprocess.run(
+                ["sfdisk", "--verify", "--json", img_path],
+                capture_output=True,
+                text=True,
+                check=True
+        )
+    except Exception as e:
+        raise RuntimeError(f"{e} Failed to read partition table from {img_path}")
 
-    return (disk_attr, partitions)
+    # Nodes are don't care
+    ptable = json.loads(res.stdout)
+    for p in ptable["partitiontable"]["partitions"]:
+        p.pop("node", None)
+
+    return (disk_attr, partitions, ptable)
 
 
 # Read all fstabs and store in a dict using UUID or label if we can,
@@ -356,8 +430,13 @@ def get_image_meta():
     image_vars = {}
     for key, value in vars.items():
         if key in IMAGE_KEYS:
-            image_vars[key] = value
-
+            if key in IMAGE_KEY_TYPES:
+                try:
+                    image_vars[key] = IMAGE_KEY_TYPES[key](value)
+                except ValueError:
+                    image_vars[key] = None  # or handle error as needed
+            else:
+                image_vars[key] = value
     return image_vars
 
 
@@ -374,11 +453,16 @@ if __name__ == '__main__':
                         nargs="*",
                         required=False)
 
+    parser.add_argument("-m", "--provisionmap",
+                        help="Path to the JSON provisioning map",
+                        type=argparse.FileType('r'),
+                        required=False)
+
     args = parser.parse_args()
     genimage_file = args.genimage;
 
     # Base info
-    attributes, genimage_partitions = parse_genimage_config(genimage_file)
+    attributes, genimage_partitions, ptable = parse_genimage_config(genimage_file)
 
     # fstab is optional
     if args.fstab:
@@ -388,9 +472,14 @@ if __name__ == '__main__':
     else:
         partition_json = genimage_partitions
 
-    top_template["meta"] = get_image_meta()
+    top_template["IGmeta"] = get_image_meta()
+    top_template["attributes"]["image-name"] = os.path.basename(attributes.get("image-name"))
     top_template["attributes"]["image-size"] = attributes.get("image-size")
-    top_template["layout"]["partition-table-type"] = attributes.get("partition-table-type")
-    top_template["layout"]["partitions"] = partition_json
+    top_template["attributes"]["image-palign-bytes"] = attributes.get("image-palign")
+    top_template["layout"]["partitiontable"] = ptable["partitiontable"]
+    top_template["layout"]["partitionimages"] = partition_json
+    if args.provisionmap:
+        with args.provisionmap as f:
+            top_template["layout"]["provisionmap"] = json.load(f)
 
     print(json.dumps(top_template, indent=4))

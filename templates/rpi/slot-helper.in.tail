@@ -6,11 +6,15 @@ die (){
 }
 
 
-# defaults
-: "${BOOTA:=99}"
-: "${BOOTB:=99}"
-: "${SYSTEMA:=99}"
-: "${SYSTEMB:=99}"
+: "${BOOTA:?}"
+: "${BOOTB:?}"
+: "${SYSTEMA:?}"
+: "${SYSTEMB:?}"
+
+: "${BOOTA_ENCRYPTED:?}"
+: "${BOOTB_ENCRYPTED:?}"
+: "${SYSTEMA_ENCRYPTED:?}"
+: "${SYSTEMB_ENCRYPTED:?}"
 
 
 prefix=disk/by-slot
@@ -104,11 +108,17 @@ test -e /sys/class/block/$bootdev || die "bad base blockdev"
 case $bootdev in
    mmc*|nvme*)
       for d in BOOTA BOOTB SYSTEMA SYSTEMB ; do
-         _v="k${d}"
-         eval "$_v=\${bootdev}p\${$d}"
-         eval "bdev=\$$_v"
-         # shellcheck disable=SC2154
-         test -e "/sys/class/block/${bdev}" || die "bad pmap blockdev $bdev"
+         eval crypt=\$"${d}_ENCRYPTED"
+         if [ "$crypt" = "y" ] ; then
+            eval "bdev=\$${d}"
+            test -e "/dev/mapper/${bdev}" || die "bad mapper blockdev $bdev"
+         else
+            _v="k${d}"
+            eval "$_v=\${bootdev}p\${$d}"
+            eval "bdev=\$$_v"
+            # shellcheck disable=SC2154
+            test -e "/sys/class/block/${bdev}" || die "bad blockdev $bdev"
+         fi
       done
       ;;
    *);;

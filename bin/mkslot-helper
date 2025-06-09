@@ -2,14 +2,44 @@
 
 set -u
 
-# Read the slot partition map from stdin (or arg1) and write the
-# fully assembled helper to stdout.
+# Read the json provision map from arg1, extract slot info and write the fully
+# assembled slot helper to stdout with the variables it expects.
+
+# Need slotted system type
+jq -e '
+  .[] |
+  select(.attributes != null) |
+  .attributes.system_type == "slotted"
+' $1 > /dev/null || { >&2 echo "Not slotted"; exit 1;}
 
 cat ${RPI_TEMPLATES}/slot-helper.in.head
 
-pmap=${1--}
-while IFS= read -r line; do
-  printf '%s\n' "$line"
-done < <(cat -- "$pmap")
+# Process regular partitions in slots
+while read -r role slot id ; do
+   echo "${role^^}${slot^^}=${id}"
+   echo "${role^^}${slot^^}_ENCRYPTED=n"
+done < <(jq -r '
+  .[] |
+  select(.slots != null) |
+  .slots |
+  to_entries[] |
+  .key as $slot |
+  .value.partitions[]? |
+  "\(.role) \($slot) \(.id)"
+' "$1")
+
+# Process encrypted partitions in slots
+while read -r role slot id ; do
+   echo "${role^^}${slot^^}=${id}"
+   echo "${role^^}${slot^^}_ENCRYPTED=y"
+done < <(jq -r '
+  .[] |
+  select(.slots != null) |
+  .slots |
+  to_entries[] |
+  .key as $slot |
+  .value.encrypted.partitions[]? |
+  "\(.role) \($slot) \(.id)"
+' "$1")
 
 cat ${RPI_TEMPLATES}/slot-helper.in.tail

@@ -38,3 +38,7 @@ ssh_user1=n
 
 # The storage type used by the device. Supported values are sd, emmc or nvme.
 storage_type=sd
+
+# Logical sector size of the device storage for which the image is intended. 
+# The output raw image file size will be a multiple of this value.
+sector_size=512

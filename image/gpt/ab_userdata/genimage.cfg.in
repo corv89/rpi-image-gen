@@ -1,10 +1,46 @@
-image <IMAGE_DIR>/<IMAGE_NAME>.<IMAGE_SUFFIX>.sparse {
+image <IMAGE_NAME>.<IMAGE_SUFFIX>.sparse {
    android-sparse {
-      image = <IMAGE_DIR>/<IMAGE_NAME>.<IMAGE_SUFFIX>
+      image = <IMAGE_NAME>.<IMAGE_SUFFIX>
    }
 }
 
-image <IMAGE_DIR>/<IMAGE_NAME>.<IMAGE_SUFFIX> {
+image config.sparse {
+   android-sparse {
+      image = config.vfat
+   }
+}
+
+image bootA.sparse {
+   android-sparse {
+      image = bootA.vfat
+   }
+}
+
+image bootB.sparse {
+   android-sparse {
+      image = bootB.vfat
+   }
+
+}
+image systemA.sparse {
+   android-sparse {
+      image = systemA.ext4
+   }
+}
+
+image systemB.sparse {
+   android-sparse {
+      image = systemB.ext4
+   }
+}
+
+image data.sparse {
+   android-sparse {
+      image = data.ext4
+   }
+}
+
+image <IMAGE_NAME>.<IMAGE_SUFFIX> {
    hdimage {
       align = 8M
       partition-table-type = "gpt"
@@ -18,7 +54,6 @@ image <IMAGE_DIR>/<IMAGE_NAME>.<IMAGE_SUFFIX> {
       bootable = true
    }
 
-   # <slot.pmap>
    partition bootA {
       in-partition-table = true
       image = bootA.vfat
@@ -44,7 +79,6 @@ image <IMAGE_DIR>/<IMAGE_NAME>.<IMAGE_SUFFIX> {
       image = systemB.ext4
       partition-type-uuid = L
    }
-   # </slot.pmap>
 
    partition data {
       in-partition-table = true

@@ -173,11 +173,13 @@ done
 # Merge defaults for selected device and image
 [[ -s ${IGDEVICE}/build.defaults ]] && aggregate_options "device" ${IGDEVICE}/build.defaults
 [[ -s ${IGIMAGE}/build.defaults ]] && aggregate_options "image" ${IGIMAGE}/build.defaults
+[[ -s ${IGIMAGE}/provision.defaults ]] && aggregate_options "image" ${IGIMAGE}/provision.defaults
 
 
 # Merge remaining defaults
 aggregate_options "device" ${IGTOP_DEVICE}/build.defaults
 aggregate_options "image" ${IGTOP_IMAGE}/build.defaults
+aggregate_options "image" ${IGTOP_IMAGE}/provision.defaults
 aggregate_options "sys" ${IGTOP}/sys-build.defaults
 aggregate_options "sbom" ${IGTOP_SBOM}/defaults
 aggregate_options "meta" ${META}/defaults
@@ -344,6 +346,7 @@ runh()
 
 # pre-build: hooks - common
 runh ${IGTOP_DEVICE}/pre-build.sh
+runh ${IGTOP_IMAGE}/pre-build.sh
 
 
 # pre-build: hooks - image layout then device

@@ -14,7 +14,6 @@ case $COMP in
 LABEL=USERDATA                  /data          ext4 rw,relatime,nofail 0 2
 LABEL=BOOTFS                    /bootfs        vfat defaults,rw 0 2
 EOF
-      image2json -g $OUTPUTPATH/genimage.cfg -f $IMAGEMOUNTPATH/etc/fstab > $OUTPUTPATH/image.json
       ;;
    BOOT)
       sed -i "s|root=\([^ ]*\)|root=\/dev\/ram0|" $IMAGEMOUNTPATH/cmdline.txt
